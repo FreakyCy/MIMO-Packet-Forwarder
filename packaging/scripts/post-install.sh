@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 OLD_NAME=lora-packet-multiplexer
-NAME=chirpstack-packet-multiplexer
+NAME=MIMO-Packet-Forwarder
 BIN_DIR=/usr/bin
-SCRIPT_DIR=/usr/lib/chirpstack-packet-multiplexer/scripts
-LOG_DIR=/var/log/chirpstack-packet-multiplexer
+SCRIPT_DIR=/usr/lib/MIMO-Packet-Forwarder/scripts
+LOG_DIR=/var/log/MIMO-Packet-Forwarder
 DAEMON_USER=packetmultiplexer
 DAEMON_GROUP=packetmultiplexer
 

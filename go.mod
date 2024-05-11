@@ -1,4 +1,4 @@
-module github.com/brocaar/chirpstack-packet-multiplexer
+module github.com/FreakyCy/MIMO-Packet-Forwarder
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect

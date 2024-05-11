@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io/ioutil"
 
-	"github.com/brocaar/chirpstack-packet-multiplexer/internal/config"
+	"github.com/FreakyCy/MIMO-Packet-Forwarder/internal/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -14,10 +14,10 @@ var cfgFile string
 var version string
 
 var rootCmd = &cobra.Command{
-	Use:   "chirpstack-packet-multiplexer",
-	Short: "ChirpStack Packet Multiplexer",
-	Long: `ChirpStack Packet Multiplexer sends packet-forwarder data to multiple backends
-	> documentation & support: https://www.chirpstack.io/
+	Use:   "MIMO-Packet-Forwarder",
+	Short: "MIMO-Packet-Forwarder",
+	Long: `MIMO-Packet-Forwarder sends MIMO-Packet-Forwarder data to multiple backends
+	> documentation & support: https://github.com/FreakyCy/MIMO-Packet-Forwarder/
 	> source & copyright information: https://github.com/brocaar/chirpstack-packet-multiplexer/`,
 	RunE: run,
 }
@@ -30,7 +30,7 @@ func init() {
 
 	viper.BindPFlag("general.log_level", rootCmd.PersistentFlags().Lookup("log-level"))
 
-	viper.SetDefault("packet_multiplexer.bind", "0.0.0.0:1700")
+	viper.SetDefault("MIMO-Packet-Forwarder.bind", "0.0.0.0:1700")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(configCmd)
@@ -58,10 +58,10 @@ func initConfig() {
 			log.WithError(err).WithField("config", cfgFile).Fatal("error loading config file")
 		}
 	} else {
-		viper.SetConfigName("chirpstack-packet-multiplexer")
+		viper.SetConfigName("MIMO-Packet-Forwarder")
 		viper.AddConfigPath(".")
-		viper.AddConfigPath("$HOME/./config/chirpstack-packet-multiplexer")
-		viper.AddConfigPath("/etc/chirpstack-packet-multiplexer")
+		viper.AddConfigPath("$HOME/./config/MIMO-Packet-Forwarder")
+		viper.AddConfigPath("/etc/MIMO-Packet-Forwarder")
 		if err := viper.ReadInConfig(); err != nil {
 			switch err.(type) {
 			case viper.ConfigFileNotFoundError:

@@ -8,7 +8,7 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the ChirpStack Packet Multiplexer version",
+	Short: "Print the MIMO-Packet-Forwarder version",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(version)
 	},

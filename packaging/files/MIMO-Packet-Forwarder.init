@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 ### BEGIN INIT INFO
-# Provides:          chirpstack-packet-multiplexer
+# Provides:          MIMO-Packet-Forwarder
 # Required-Start:    $all
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: ChirpStack Packet Multiplexer
+# Short-Description: MIMO-Packet-Forwarder
 ### END INIT INFO
 
 
-NAME=chirpstack-packet-multiplexer
-DESC="ChirpStack Packet Multiplexer"
+NAME=MIMO-Packet-Forwarder
+DESC="MIMO-Packet-Forwarder"
 DAEMON_USER=packetmultiplexer
 DAEMON_GROUP=packetmultiplexer
 DAEMON=/usr/bin/$NAME

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 OLD_NAME=lora-packet-multiplexer
-NAME=chirpstack-packet-multiplexer
+NAME=MIMO-Packet-Forwarder
 
 function remove_systemd {
 	systemctl stop $NAME

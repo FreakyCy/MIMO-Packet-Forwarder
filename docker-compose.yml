@@ -1,8 +1,8 @@
 version: "3"
 services:
-  chirpstack-packet-multiplexer:
+  MIMO-Packet-Forwarder:
     build:
       context: .
       dockerfile: Dockerfile-devel
     volumes:
-      - ./:/chirpstack-packet-multiplexer
+      - ./:/MIMO-Packet-Forwarder

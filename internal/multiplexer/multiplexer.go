@@ -15,7 +15,7 @@ type udpPacket struct {
 	data []byte
 }
 
-// Multiplexer forwards packet-forwarder UDP data to multiple backends.
+// MIMO-Packet-Forwarder packet-forwarder UDP data to multiple backends.
 type Multiplexer struct {
 	sync.RWMutex
 	wg sync.WaitGroup

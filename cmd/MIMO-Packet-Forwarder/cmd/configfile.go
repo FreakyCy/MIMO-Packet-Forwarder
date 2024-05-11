@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/brocaar/chirpstack-packet-multiplexer/internal/config"
+	"github.com/FreakyCy/MIMO-Packet-Forwarder/internal/config"
 )
 
 const configTemplate = `[general]
@@ -17,7 +17,7 @@ const configTemplate = `[general]
 log_level={{ .General.LogLevel }}
 
 
-[packet_multiplexer]
+[MIMO-Packet-Forwarder]
 # Bind
 #
 # The interface:port on which the packet-multiplexer will bind for receiving
@@ -31,7 +31,7 @@ bind="{{ .PacketMultiplexer.Bind }}"
 # packet-forwarder UDP data.
 #
 # Example:
-# [[packet_multiplexer.backend]]
+# [[MIMO-Packet-Forwarder.backend]]
 # # Host
 # #
 # # The host:IP of the backend.
@@ -51,7 +51,7 @@ bind="{{ .PacketMultiplexer.Bind }}"
 #   "0202020202020202",
 # ]
 {{ range $index, $element := .PacketMultiplexer.Backends }}
-[[packet_multiplexer.backend]]
+[[MIMO-Packet-Forwarder.backend]]
 host="{{ $element.Host }}"
 
 uplink_only={{ $element.UplinkOnly }}

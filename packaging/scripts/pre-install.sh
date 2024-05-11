@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 OLD_NAME=lora-packet-multiplexer
-NAME=chirpstack-packet-multiplexer
+NAME=MIMO-Packet-Forwarder
 
 # migrate config to new location
 if [[ -f /etc/$OLD_NAME/$OLD_NAME.toml ]] && [[ ! -h /etc/$OLD_NAME/$OLD_NAME.toml ]] && [[ ! -f /etc/$NAME/$NAME.toml ]]; then

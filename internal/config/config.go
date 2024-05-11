@@ -1,6 +1,6 @@
 package config
 
-import "github.com/brocaar/chirpstack-packet-multiplexer/internal/multiplexer"
+import "github.com/FreakyCy/MIMO-Packet-Forwarder/internal/multiplexer"
 
 // Version holds the ChirpStack Packet Multiplexer version.
 var Version string
