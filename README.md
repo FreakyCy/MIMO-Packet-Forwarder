@@ -1,7 +1,8 @@
 # MIMO-Packet-Forwarder
 
-[![CircleCI](https://circleci.com/gh/brocaar/chirpstack-packet-multiplexer.svg?style=svg)](https://circleci.com/gh/brocaar/chirpstack-packet-multiplexer)
+![CircleCI](https://circleci.com/gh/brocaar/chirpstack-packet-multiplexer.svg?style=svg)
 
+The MIMO-Packet-Forwarder is under Development and not working
 The MIMO-Packet-Forwarder utility forwards the [Semtech packet-forwarder](https://github.com/lora-net/packet_forwarder)
 UDP data to one or more endpoints. It makes it possible to connect a
 LoRa MIMO gateway to multiple networks. It is part of [ChirpStack](https://www.chirpstack.io).
@@ -101,9 +102,10 @@ touch MIMO-Packet-Forwarder/config/MIMO-Packet-Forwarder.toml
 
 Save your template in the following just created location below. Edit as required
 for multiplexer and backends.
-```MIMO-Packet-Forwarder/config/MIMO-Packet-Forwarder.toml```
+`MIMO-Packet-Forwarder/config/MIMO-Packet-Forwarder.toml`
 
 Example docker-compose
+
 ```
 version: "3"
 services:
@@ -115,8 +117,9 @@ services:
       - ./:/MIMO-Packet-Forwarder
       - ./config/MIMO-Packet-Forwarder.toml:/etc/MIMO-Packet-Forwarder/MIMO-Packet-Forwarder.toml:ro
 ```
+
 To run...
-```docker-compose up```
+`docker-compose up`
 
 ## Changelog
 

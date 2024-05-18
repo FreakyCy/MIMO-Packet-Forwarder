@@ -66,7 +66,7 @@ gateway_ids = [
 
 var configCmd = &cobra.Command{
 	Use:   "configfile",
-	Short: "Print the ChirpStack Packet Multiplexer configuration file",
+	Short: "Print the MIMO-Packet-Forwarder configuration file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		t := template.Must(template.New("config").Parse(configTemplate))
 		err := t.Execute(os.Stdout, &config.C)

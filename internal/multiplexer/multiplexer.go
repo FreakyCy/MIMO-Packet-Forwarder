@@ -2,9 +2,11 @@ package multiplexer
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -13,6 +15,7 @@ import (
 type udpPacket struct {
 	addr *net.UDPAddr
 	data []byte
+	rssi int
 }
 
 // MIMO-Packet-Forwarder packet-forwarder UDP data to multiple backends.
@@ -145,6 +148,16 @@ func (m *Multiplexer) getGateway(gatewayID string) (*net.UDPAddr, error) {
 
 func (m *Multiplexer) readUplinkPackets() error {
 	buf := make([]byte, 65507) // max udp data size
+
+	type cachedPacket struct {
+		packet udpPacket
+		rssi   int
+		timer  *time.Timer
+	}
+
+	var cached *cachedPacket
+	var mu sync.Mutex
+
 	for {
 		i, addr, err := m.conn.ReadFromUDP(buf)
 		if err != nil {
@@ -160,15 +173,84 @@ func (m *Multiplexer) readUplinkPackets() error {
 		copy(data, buf[:i])
 		up := udpPacket{data: data, addr: addr}
 
-		// handle packet async
-		go func(up udpPacket) {
-			if err := m.handleUplinkPacket(up); err != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"data_base64": base64.StdEncoding.EncodeToString(up.data),
-					"addr":        up.addr,
-				}).Error("could not handle packet")
+		// read rssi value
+		var packetData struct {
+			Rxpk []struct {
+				Data string `json:"data"`
+				Rssi int    `json:"rssi"`
+			} `json:"rxpk"`
+		}
+
+		if err := json.Unmarshal(up.data, &packetData); err != nil {
+			log.WithError(err).Error("unmarshal packet data error")
+			continue
+		}
+
+		if len(packetData.Rxpk) == 0 {
+			log.Error("no rxpk in packet data")
+			continue
+		}
+
+		newData := packetData.Rxpk[0].Data
+		newRssi := packetData.Rxpk[0].Rssi
+
+		mu.Lock()
+
+		if cached != nil && cached.packet.data != nil {
+			cachedData := packetData.Rxpk[0].Data
+
+			if cachedData == newData {
+				if newRssi > cached.rssi {
+					// new data with better rssi, overwrite cached package
+					cached.packet = up
+					cached.rssi = newRssi
+					cached.timer.Reset(100 * time.Millisecond)
+				} else {
+					// new package has worse rssi ignore it
+					mu.Unlock()
+					continue
+				}
+			} else {
+				// data in package is different send cached packet
+				go func(cached udpPacket) {
+					if err := m.handleUplinkPacket(cached); err != nil {
+						log.WithError(err).WithFields(log.Fields{
+							"data_base64": base64.StdEncoding.EncodeToString(cached.data),
+							"addr":        cached.addr,
+						}).Error("could not handle packet")
+					}
+				}(cached.packet)
+
+				// cache new packet
+				cached.packet = up
+				cached.rssi = newRssi
+				cached.timer.Reset(100 * time.Millisecond)
 			}
-		}(up)
+		} else {
+			// no cached package, cache new pachage
+			cached = &cachedPacket{
+				packet: up,
+				rssi:   newRssi,
+				timer: time.AfterFunc(100*time.Millisecond, func() {
+					mu.Lock()
+					defer mu.Unlock()
+
+					if cached != nil {
+						go func(cached udpPacket) {
+							if err := m.handleUplinkPacket(cached); err != nil {
+								log.WithError(err).WithFields(log.Fields{
+									"data_base64": base64.StdEncoding.EncodeToString(cached.data),
+									"addr":        cached.addr,
+								}).Error("could not handle packet")
+							}
+						}(cached.packet)
+						cached = nil
+					}
+				}),
+			}
+		}
+
+		mu.Unlock()
 	}
 }
 
