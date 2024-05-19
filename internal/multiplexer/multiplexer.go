@@ -3,6 +3,7 @@ package multiplexer
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -38,8 +39,12 @@ func New(c Config) (*Multiplexer, error) {
 		backends: make(map[string]map[string]*net.UDPConn),
 		gateways: make(map[string]*net.UDPAddr),
 	}
-
+	// Set default value for Bind if it's empty
+	if c.Bind == "" {
+		c.Bind = ":1800" // Set your default port here
+	}
 	addr, err := net.ResolveUDPAddr("udp", c.Bind)
+	fmt.Println("Bind address:", c.Bind)
 	if err != nil {
 		return nil, errors.Wrap(err, "resolve udp addr error")
 	}
@@ -51,6 +56,9 @@ func New(c Config) (*Multiplexer, error) {
 	}
 
 	for _, backend := range m.config.Backends {
+		if backend.Host == "" {
+			backend.Host = "eu1.cloud.thethings.network:1700" // Set your default backend host here if not set
+		}
 		addr, err := net.ResolveUDPAddr("udp", backend.Host)
 		if err != nil {
 			return nil, errors.Wrap(err, "resolve udp addr error")
