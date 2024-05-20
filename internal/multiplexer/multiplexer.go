@@ -2,12 +2,12 @@ package multiplexer
 
 import (
 	"encoding/base64"
-	"encoding/json"
-	"fmt"
+	"encoding/hex"
 	"net"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -16,7 +16,6 @@ import (
 type udpPacket struct {
 	addr *net.UDPAddr
 	data []byte
-	rssi int
 }
 
 // MIMO-Packet-Forwarder packet-forwarder UDP data to multiple backends.
@@ -24,64 +23,70 @@ type Multiplexer struct {
 	sync.RWMutex
 	wg sync.WaitGroup
 
-	conn   *net.UDPConn
-	config Config
-	closed bool
-
+	conn     *net.UDPConn
+	config   Config
+	closed   bool
 	backends map[string]map[string]*net.UDPConn // [backendHost][gatewayID]UDPConn
 	gateways map[string]*net.UDPAddr            // [gatewayID]UDPAddr
+
 }
 
 // New creates a new multiplexer.
 func New(c Config) (*Multiplexer, error) {
+	log.Println("New function called")
+
 	m := Multiplexer{
 		config:   c,
 		backends: make(map[string]map[string]*net.UDPConn),
 		gateways: make(map[string]*net.UDPAddr),
 	}
-	// Set default value for Bind if it's empty
+
 	if c.Bind == "" {
-		c.Bind = ":1800" // Set your default port here
+		c.Bind = ":1800"
 	}
+
 	addr, err := net.ResolveUDPAddr("udp", c.Bind)
-	fmt.Println("Bind address:", c.Bind)
 	if err != nil {
+		log.Println("resolve udp addr error:", err)
 		return nil, errors.Wrap(err, "resolve udp addr error")
 	}
 
-	log.WithField("addr", addr).Info("starting listener")
+	log.Println("starting listener on address:", addr)
 	m.conn, err = net.ListenUDP("udp", addr)
 	if err != nil {
+		log.Println("listen udp error:", err)
 		return nil, errors.Wrap(err, "listen udp error")
 	}
 
-	for _, backend := range m.config.Backends {
+	log.Println("initializing backends")
+	for _, backendConfig := range m.config.Backends {
+		backend := backendConfig // Create a copy of the backendConfig for this iteration
 		if backend.Host == "" {
-			backend.Host = "eu1.cloud.thethings.network:1700" // Set your default backend host here if not set
+			backend.Host = "eu1.cloud.thethings.network:1700"
 		}
 		addr, err := net.ResolveUDPAddr("udp", backend.Host)
 		if err != nil {
+			log.Println("resolve udp addr error for backend host:", backend.Host, "error:", err)
 			return nil, errors.Wrap(err, "resolve udp addr error")
 		}
 
 		for _, gatewayID := range backend.GatewayIDs {
 			gatewayID = strings.ToLower(gatewayID)
 
-			log.WithFields(log.Fields{
-				"gateway_id":  gatewayID,
-				"host":        backend.Host,
-				"uplink_only": backend.UplinkOnly,
-			}).Info("dial udp")
+			log.Println("dial udp for gatewayID:", gatewayID, "host:", backend.Host)
 			conn, err := net.DialUDP("udp", nil, addr)
 			if err != nil {
+				log.Println("dial udp error for gatewayID:", gatewayID, "error:", err)
 				return nil, errors.Wrap(err, "dial udp error")
 			}
 
 			if _, ok := m.backends[backend.Host]; !ok {
 				m.backends[backend.Host] = make(map[string]*net.UDPConn)
+				log.Println("initialized backend host in backends map:", backend.Host)
 			}
 
 			m.backends[backend.Host][gatewayID] = conn
+			log.Println("added gateway to backends map, host:", backend.Host, "gatewayID:", gatewayID)
 
 			go func(backend, gatewayID string, conn *net.UDPConn) {
 				m.wg.Add(1)
@@ -98,7 +103,7 @@ func New(c Config) (*Multiplexer, error) {
 		m.wg.Add(1)
 		err := m.readUplinkPackets()
 		if !m.isClosed() {
-			log.WithError(err).Error("read udp packets error")
+			log.Println("read udp packets error:", err)
 		}
 		m.wg.Done()
 	}()
@@ -156,23 +161,12 @@ func (m *Multiplexer) getGateway(gatewayID string) (*net.UDPAddr, error) {
 
 func (m *Multiplexer) readUplinkPackets() error {
 	buf := make([]byte, 65507) // max udp data size
-
-	type cachedPacket struct {
-		packet udpPacket
-		rssi   int
-		timer  *time.Timer
-	}
-
-	var cached *cachedPacket
-	var mu sync.Mutex
-
 	for {
 		i, addr, err := m.conn.ReadFromUDP(buf)
 		if err != nil {
 			if m.isClosed() {
 				return nil
 			}
-
 			log.WithError(err).Error("read from udp error")
 			continue
 		}
@@ -181,84 +175,92 @@ func (m *Multiplexer) readUplinkPackets() error {
 		copy(data, buf[:i])
 		up := udpPacket{data: data, addr: addr}
 
-		// read rssi value
-		var packetData struct {
-			Rxpk []struct {
-				Data string `json:"data"`
-				Rssi int    `json:"rssi"`
-			} `json:"rxpk"`
-		}
+		hexDump := hex.Dump(buf[:i])
+		readableOutput := processHexDump(hexDump)
 
-		if err := json.Unmarshal(up.data, &packetData); err != nil {
-			log.WithError(err).Error("unmarshal packet data error")
-			continue
-		}
+		processRxpkPacket(readableOutput)
 
-		if len(packetData.Rxpk) == 0 {
-			log.Error("no rxpk in packet data")
-			continue
-		}
+		log.WithFields(log.Fields{
+			"addr": up.addr,
+		}).Info("Packet received from gateway")
 
-		newData := packetData.Rxpk[0].Data
-		newRssi := packetData.Rxpk[0].Rssi
-
-		mu.Lock()
-
-		if cached != nil && cached.packet.data != nil {
-			cachedData := packetData.Rxpk[0].Data
-
-			if cachedData == newData {
-				if newRssi > cached.rssi {
-					// new data with better rssi, overwrite cached package
-					cached.packet = up
-					cached.rssi = newRssi
-					cached.timer.Reset(100 * time.Millisecond)
-				} else {
-					// new package has worse rssi ignore it
-					mu.Unlock()
-					continue
-				}
-			} else {
-				// data in package is different send cached packet
-				go func(cached udpPacket) {
-					if err := m.handleUplinkPacket(cached); err != nil {
-						log.WithError(err).WithFields(log.Fields{
-							"data_base64": base64.StdEncoding.EncodeToString(cached.data),
-							"addr":        cached.addr,
-						}).Error("could not handle packet")
-					}
-				}(cached.packet)
-
-				// cache new packet
-				cached.packet = up
-				cached.rssi = newRssi
-				cached.timer.Reset(100 * time.Millisecond)
+		// Handle packet asynchronously
+		go func(up udpPacket) {
+			if err := m.handleUplinkPacket(up); err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"data_base64": base64.StdEncoding.EncodeToString(up.data),
+					"addr":        up.addr,
+				}).Error("Could not handle packet")
 			}
+		}(up)
+	}
+}
+
+func processHexDump(hexDump string) string {
+	var sb strings.Builder
+	lines := strings.Split(hexDump, "\n")
+	for _, line := range lines {
+		start := strings.Index(line, "|")
+		end := strings.LastIndex(line, "|")
+		if start != -1 && end != -1 && start != end {
+			content := line[start+1 : end]
+			sb.WriteString(content)
+		}
+	}
+	return sb.String()
+}
+
+func processRxpkPacket(readableOutput string) {
+	if strings.Contains(readableOutput, "rxpk") {
+		log.Debug("Paket rxpk empfangen!")
+		if strings.Contains(readableOutput, "LORA") {
+			log.WithFields(log.Fields{
+				"Rohdaten": readableOutput,
+			}).Debug("Paket mit Lora-Daten empfangen!")
+			processRSSI(readableOutput)
+			processDataValue(readableOutput)
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"Rohdaten": readableOutput,
+		}).Debug("Kein rxpk Paket")
+	}
+}
+
+func processRSSI(readableOutput string) {
+	r1 := regexp.MustCompile(`"rssi":(-?\d+)`)
+	match1 := r1.FindStringSubmatch(readableOutput)
+	if len(match1) > 1 {
+		rssiValueStr := match1[1]
+		rssiValue, err := strconv.Atoi(rssiValueStr)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"data": readableOutput,
+			}).Error("Fehler beim Konvertieren des RSSI-Werts:")
 		} else {
-			// no cached package, cache new pachage
-			cached = &cachedPacket{
-				packet: up,
-				rssi:   newRssi,
-				timer: time.AfterFunc(100*time.Millisecond, func() {
-					mu.Lock()
-					defer mu.Unlock()
-
-					if cached != nil {
-						go func(cached udpPacket) {
-							if err := m.handleUplinkPacket(cached); err != nil {
-								log.WithError(err).WithFields(log.Fields{
-									"data_base64": base64.StdEncoding.EncodeToString(cached.data),
-									"addr":        cached.addr,
-								}).Error("could not handle packet")
-							}
-						}(cached.packet)
-						cached = nil
-					}
-				}),
-			}
+			log.WithFields(log.Fields{
+				"RSSI": rssiValue,
+			}).Debug("RSSI-Wert:")
 		}
+	} else {
+		log.WithFields(log.Fields{
+			"data": readableOutput,
+		}).Error("RSSI-Wert nicht gefunden")
+	}
+}
 
-		mu.Unlock()
+func processDataValue(readableOutput string) {
+	re := regexp.MustCompile(`"data":"([^"]+)"`)
+	match := re.FindStringSubmatch(readableOutput)
+	if len(match) > 1 {
+		dataValue := match[1]
+		log.WithFields(log.Fields{
+			"DATA": dataValue,
+		}).Debug("Data-Wert:")
+	} else {
+		log.WithFields(log.Fields{
+			"data": readableOutput,
+		}).Error("Fehler beim Konvertieren des DATA-Werts:")
 	}
 }
 
@@ -292,13 +294,19 @@ func (m *Multiplexer) readDownlinkPackets(backend, gatewayID string, conn *net.U
 }
 
 func (m *Multiplexer) handleUplinkPacket(up udpPacket) error {
+	log.WithFields(log.Fields{
+		"addr": up.addr,
+	}).Debug("handling uplink packet")
+
 	pt, err := GetPacketType(up.data)
 	if err != nil {
+		log.WithError(err).Error("get packet-type error")
 		return errors.Wrap(err, "get packet-type error")
 	}
 
 	gatewayID, err := GetGatewayID(up.data)
 	if err != nil {
+		log.WithError(err).Error("get gateway id error")
 		return errors.Wrap(err, "get gateway id error")
 	}
 
@@ -310,14 +318,20 @@ func (m *Multiplexer) handleUplinkPacket(up udpPacket) error {
 
 	switch pt {
 	case PushData:
+		log.Debug("packet type is PushData")
 		return m.handlePushData(gatewayID, up)
 	case PullData:
+		log.Debug("packet type is PullData")
 		if err := m.setGateway(gatewayID, up.addr); err != nil {
+			log.WithError(err).Error("set gateway error")
 			return errors.Wrap(err, "set gateway error")
 		}
 		return m.handlePullData(gatewayID, up)
 	case TXACK:
+		log.Debug("packet type is TXACK")
 		return m.forwardUplinkPacket(gatewayID, up)
+	default:
+		log.Warn("unhandled packet type")
 	}
 
 	return nil
@@ -359,6 +373,7 @@ func (m *Multiplexer) handlePushData(gatewayID string, up udpPacket) error {
 	b[3] = byte(PushACK)
 	if _, err := m.conn.WriteToUDP(b, up.addr); err != nil {
 		return errors.Wrap(err, "write to udp error")
+
 	}
 
 	return m.forwardUplinkPacket(gatewayID, up)
@@ -386,8 +401,19 @@ func (m *Multiplexer) handlePullData(gatewayID string, up udpPacket) error {
 }
 
 func (m *Multiplexer) forwardUplinkPacket(gatewayID string, up udpPacket) error {
+
+	log.WithFields(log.Fields{
+		"gateway_id": gatewayID,
+		"backends":   m.backends,
+	}).Debug("forwardUplinkPacket called")
+
 	for host, gwIDs := range m.backends {
+		log.WithField("host", host).Debug("checking host")
 		for gwID, conn := range gwIDs {
+			log.WithFields(log.Fields{
+				"expected_gateway_id": gwID,
+				"actual_gateway_id":   gatewayID,
+			}).Debug("checking gateway id")
 			if gwID == gatewayID {
 				pt, err := GetPacketType(up.data)
 				if err != nil {
@@ -404,7 +430,17 @@ func (m *Multiplexer) forwardUplinkPacket(gatewayID string, up udpPacket) error 
 						"host":       host,
 						"gateway_id": gwID,
 					}).Error("udp write error")
+				} else {
+					log.WithFields(log.Fields{
+						"host":       host,
+						"gateway_id": gwID,
+					}).Info("packet forwarded successfully")
 				}
+			} else {
+				log.WithFields(log.Fields{
+					"expected_gateway_id": gwID,
+					"actual_gateway_id":   gatewayID,
+				}).Debug("gateway_id does not match, not forwarding")
 			}
 		}
 	}
@@ -448,4 +484,16 @@ func (m *Multiplexer) backendIsUplinkOnly(backend string) bool {
 	}
 
 	return true
+}
+
+func logBackends(backends map[string]map[string]*net.UDPConn) {
+	for host, gwIDs := range backends {
+		for gwID, conn := range gwIDs {
+			log.WithFields(log.Fields{
+				"host":       host,
+				"gateway_id": gwID,
+				"conn":       conn.LocalAddr(),
+			}).Info("Backend connection")
+		}
+	}
 }

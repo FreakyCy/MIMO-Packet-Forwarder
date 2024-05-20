@@ -17,7 +17,7 @@ const configTemplate = `[general]
 log_level={{ .General.LogLevel }}
 
 
-[MIMO-Packet-Forwarder]
+[packet_multiplexer]
 # Bind
 #
 # The interface:port on which the packet-multiplexer will bind for receiving
@@ -31,7 +31,7 @@ bind="{{ .PacketMultiplexer.Bind }}"
 # packet-forwarder UDP data.
 #
 # Example:
-# [[MIMO-Packet-Forwarder.backend]]
+[[packet_multiplexer.backend]]
 # # Host
 # #
 # # The host:IP of the backend.
@@ -51,7 +51,7 @@ bind="{{ .PacketMultiplexer.Bind }}"
 #   "0202020202020202",
 # ]
 {{ range $index, $element := .PacketMultiplexer.Backends }}
-[[MIMO-Packet-Forwarder.backend]]
+[[packet_multiplexer.backend]]
 host="{{ $element.Host }}"
 
 uplink_only={{ $element.UplinkOnly }}
