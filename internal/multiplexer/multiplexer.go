@@ -14,6 +14,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Zählvariable für empfangene UDP Pakete
+var receivedPacketCount int = 0
+var packetThreshold int // Schwellenwert für die Anzahl der UDP-Pakete
+
 // udpPacket structure with RSSI and DataValue attributes
 type udpPacket struct {
 	data      []byte
@@ -60,6 +64,7 @@ func New(c Config) (*Multiplexer, error) {
 	if c.Bind == "" {
 		c.Bind = ":1800"
 	}
+	packetThreshold = c.PacketThreshold
 
 	addr, err := net.ResolveUDPAddr("udp", c.Bind)
 	if err != nil {
@@ -90,7 +95,7 @@ func New(c Config) (*Multiplexer, error) {
 		for _, gatewayID := range backend.GatewayIDs {
 			gatewayID = strings.ToLower(gatewayID)
 
-			log.Println("dial udp for gatewayID:", gatewayID, "host:", backend.Host)
+			log.Println("dial udp with Config: gatewayID:", gatewayID, "Backend:", backend.Host, "Binds:", c.Bind, "Concentrators:", c.PacketThreshold)
 			conn, err := net.DialUDP("udp", nil, addr)
 			if err != nil {
 				log.Println("dial udp error for gatewayID:", gatewayID, "error:", err)
@@ -176,11 +181,6 @@ func (m *Multiplexer) getGateway(gatewayID string) (*net.UDPAddr, error) {
 	return addr, nil
 }
 
-// Function to check if a packet contains relevant data (RSSI and Data)
-func hasRelevantData(up udpPacket) bool {
-	return up.rssi != 0 && len(up.data) > 0
-}
-
 // Function to process incoming packets and cache them
 func (m *Multiplexer) readUplinkPackets() error {
 	buf := make([]byte, 65507) // max udp data size
@@ -259,90 +259,129 @@ func processRSSI(up *udpPacket, readableOutput string) {
 	}
 }
 
-// Function to process the Data value and cache the packet
-func processDataValue(m *Multiplexer, up *udpPacket, readableOutput string, cache *packetCache) {
+func extractDataValue(readableOutput string) (string, bool) {
 	re := regexp.MustCompile(`"data":"([^"]+)"`)
 	match := re.FindStringSubmatch(readableOutput)
 	if len(match) > 1 {
-		dataValue := match[1]
-		log.WithFields(log.Fields{
-			"DATA": dataValue,
-		}).Debug("Data-Wert gesetzt")
-		up.dataValue = dataValue // Setzen des Data-Werts im udpPacket
+		return match[1], true
+	}
+	return "", false
+}
 
+func createCacheTimer(m *Multiplexer, up *udpPacket, cache *packetCache, dataValue string) *time.Timer {
+	return time.AfterFunc(100*time.Millisecond, func() {
 		cache.Lock()
 		defer cache.Unlock()
-
-		// Check if a packet with the same Data value already exists
-		if existingPacketInfo, ok := cache.packets[dataValue]; ok {
-			// If the RSSI value of the new packet is higher, update
-			if up.rssi > existingPacketInfo.packet.rssi {
-				log.WithFields(log.Fields{
-					"old_rssi": existingPacketInfo.packet.rssi,
-					"new_rssi": up.rssi,
-				}).Debug("RSSI-Wert aktualisiert im Cache")
-
-				// Stop old timer
-				existingPacketInfo.timer.Stop()
-
-				// Update packet in cache
-				existingPacketInfo.packet = *up
-
-				// Start new timer
-				existingPacketInfo.timer = time.AfterFunc(100*time.Millisecond, func() {
-					cache.Lock()
-					defer cache.Unlock()
-					// Check if packet is still in cache
-					if cachedPacketInfo, found := cache.packets[dataValue]; found && cachedPacketInfo.packet.addr == up.addr {
-						log.Debug("Verarbeite aktualisiertes zwischengespeichertes Paket")
-						if err := m.handleUplinkPacket(cachedPacketInfo.packet); err != nil {
-							log.WithError(err).WithFields(log.Fields{
-								"data_base64": base64.StdEncoding.EncodeToString(cachedPacketInfo.packet.data),
-								"addr":        cachedPacketInfo.packet.addr,
-							}).Error("Could not handle packet")
-						} else {
-							log.Debug("Packet processed after 100ms")
-						}
-						// Delete packet in cache
-						delete(cache.packets, dataValue)
-					}
-				})
+		if cachedPacketInfo, found := cache.packets[dataValue]; found && cachedPacketInfo.packet.addr == up.addr {
+			log.Debug("Verarbeite zwischengespeichertes Paket")
+			if err := m.handleUplinkPacket(cachedPacketInfo.packet); err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"data_base64": base64.StdEncoding.EncodeToString(cachedPacketInfo.packet.data),
+					"addr":        cachedPacketInfo.packet.addr,
+				}).Error("Could not handle packet")
 			} else {
-				log.WithFields(log.Fields{
-					"current_rssi": up.rssi,
-				}).Debug("Aktueller RSSI-Wert niedriger, Cache bleibt unverändert")
+				log.Debug("Packet processed after 100ms")
+			}
+			receivedPacketCount = 0
+			delete(cache.packets, dataValue)
+		}
+	})
+}
+
+func updateCache(m *Multiplexer, up *udpPacket, cache *packetCache, dataValue string) {
+	cache.Lock()
+	defer cache.Unlock()
+	receivedPacketCount++
+
+	if existingPacketInfo, ok := cache.packets[dataValue]; ok {
+
+		if up.rssi > existingPacketInfo.packet.rssi {
+			log.WithFields(log.Fields{
+				"old_rssi":    existingPacketInfo.packet.rssi,
+				"new_rssi":    up.rssi,
+				"Packetcount": receivedPacketCount,
+			}).Debug("RSSI-Wert aktualisiert im Cache")
+
+			existingPacketInfo.timer.Stop()
+			existingPacketInfo.packet = *up
+			log.WithFields(log.Fields{
+				"Packetcount": receivedPacketCount,
+			}).Debug("Timer gestoppt IF")
+
+		} else {
+			log.WithFields(log.Fields{
+				"current_rssi": up.rssi,
+				"Packetcount":  receivedPacketCount,
+			}).Debug("Aktueller RSSI-Wert niedriger, Cache bleibt unverändert")
+		}
+		if receivedPacketCount >= packetThreshold {
+			// Paket direkt verarbeiten
+			log.Debug("Paket direkt verarbeiten IF")
+			up = &existingPacketInfo.packet
+			processPacketDirectly(m, up)
+			receivedPacketCount = 0
+			if existingPacketInfo, ok := cache.packets[dataValue]; ok {
+				existingPacketInfo.timer.Stop()
+				delete(cache.packets, dataValue)
 			}
 		} else {
-			// Else cache packet
-			log.Debug("Paket zum Cache hinzugefügt")
-			newPacketInfo := &packetInfo{
-				packet: *up,
-				timer: time.AfterFunc(100*time.Millisecond, func() {
-					cache.Lock()
-					defer cache.Unlock()
-					// Check if packet is still in cache
-					if cachedPacketInfo, found := cache.packets[dataValue]; found && cachedPacketInfo.packet.addr == up.addr {
-						log.Debug("Verarbeite zwischengespeichertes Paket")
-						if err := m.handleUplinkPacket(cachedPacketInfo.packet); err != nil {
-							log.WithError(err).WithFields(log.Fields{
-								"data_base64": base64.StdEncoding.EncodeToString(cachedPacketInfo.packet.data),
-								"addr":        cachedPacketInfo.packet.addr,
-							}).Error("Could not handle packet")
-						} else {
-							log.Debug("Packet processed after 100ms")
-						}
-						// Delete cached packet
-						delete(cache.packets, dataValue)
-					}
-				}),
-			}
-			cache.packets[dataValue] = newPacketInfo
+			existingPacketInfo.timer = createCacheTimer(m, up, cache, dataValue)
 		}
 	} else {
+		log.Debug("Paket zum Cache hinzugefügt")
+		log.WithFields(log.Fields{
+			"Packetcount": receivedPacketCount,
+		}).Debug("Timer gestoppt ELSE")
+		newPacketInfo := &packetInfo{
+			packet: *up,
+			timer:  nil,
+		}
+
+		if receivedPacketCount >= packetThreshold {
+			// Paket direkt verarbeiten
+			log.Debug("Paket direkt verarbeiten ELSE")
+			up = &existingPacketInfo.packet
+			processPacketDirectly(m, up)
+			receivedPacketCount = 0
+			if existingPacketInfo, ok := cache.packets[dataValue]; ok {
+				existingPacketInfo.timer.Stop()
+				delete(cache.packets, dataValue)
+			}
+		} else {
+			newPacketInfo.timer = createCacheTimer(m, up, cache, dataValue)
+		}
+
+		cache.packets[dataValue] = newPacketInfo
+	}
+}
+
+func processPacketDirectly(m *Multiplexer, up *udpPacket) {
+	//log.Debug("Verarbeite Paket direkt ohne Verzögerung")
+	if err := m.handleUplinkPacket(*up); err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"data_base64": base64.StdEncoding.EncodeToString(up.data),
+			"addr":        up.addr,
+		}).Error("Could not handle packet")
+	} else {
+		log.Debug("Packet processed immediately")
+	}
+}
+
+func processDataValue(m *Multiplexer, up *udpPacket, readableOutput string, cache *packetCache) {
+	dataValue, ok := extractDataValue(readableOutput)
+	if !ok {
 		log.WithFields(log.Fields{
 			"data": readableOutput,
 		}).Error("Fehler beim Konvertieren des DATA-Werts:")
+		return
 	}
+
+	log.WithFields(log.Fields{
+		"DATA": dataValue,
+	}).Debug("Data-Wert gesetzt")
+	up.dataValue = dataValue
+
+	updateCache(m, up, cache, dataValue)
 }
 
 // Function to process hex dump
@@ -588,17 +627,4 @@ func (m *Multiplexer) backendIsUplinkOnly(backend string) bool {
 	}
 
 	return true
-}
-
-// Function to log backend connections
-func logBackends(backends map[string]map[string]*net.UDPConn) {
-	for host, gwIDs := range backends {
-		for gwID, conn := range gwIDs {
-			log.WithFields(log.Fields{
-				"host":       host,
-				"gateway_id": gwID,
-				"conn":       conn.LocalAddr(),
-			}).Info("Backend connection")
-		}
-	}
 }

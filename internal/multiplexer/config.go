@@ -2,8 +2,9 @@ package multiplexer
 
 // Config holds the multiplexer config.
 type Config struct {
-	Bind     string          `mapstructure:"bind"`
-	Backends []BackendConfig `mapstructure:"backend"`
+	Bind            string          `mapstructure:"bind"`
+	Backends        []BackendConfig `mapstructure:"backend"`
+	PacketThreshold int             `mapstructure:"concentrators"`
 }
 
 // BackendConfig holds the config for a single backend.
