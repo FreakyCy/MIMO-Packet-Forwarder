@@ -1,11 +1,8 @@
 # MIMO-Packet-Forwarder
 
-![CircleCI](https://circleci.com/gh/brocaar/chirpstack-packet-multiplexer.svg?style=svg)
-
-The MIMO-Packet-Forwarder is under Development and not working
 The MIMO-Packet-Forwarder utility forwards the [Semtech packet-forwarder](https://github.com/lora-net/packet_forwarder)
-UDP data to one or more endpoints. It makes it possible to connect a
-LoRa MIMO gateway to multiple networks. It is part of [ChirpStack](https://www.chirpstack.io).
+UDP data from different concentrators to one or more endpoints. It has build in MIMO capabilities and a smart antenna selection for downlink packets
+It makes it possible to connect different Semtech packet-forwarders to one backend acting as one LoRa MIMO gateway and can send its data to multiple networks.
 
 ## Install
 
@@ -47,39 +44,45 @@ Executing `MIMO-Packet-Forwarder configfile` returns the following configuration
 template:
 
 ```toml
-[general]
 # Log level
 #
 # debug=5, info=4, warning=3, error=2, fatal=1, panic=0
 log_level=4
 
 
-[MIMO-Packet-Forwarder]
+[packet_multiplexer]
 # Bind
 #
 # The interface:port on which the packet-multiplexer will bind for receiving
 # data from the packet-forwarder (UDP data).
-bind="0.0.0.0:1700"
-
-
+bind="0.0.0.0:1800"
+#
+# Number of concentrator modules on gateway side. The MIMO-Packet-Multiplexer 
+#will wait for this number of rxpk messages to send to backend, otherwise it will 
+#take about 100ms to process the received message
+concentrators=3
+#
+# This is the main gateway ID used for the communication with the backend software
+maingatewayid="0101010101010101"
+#
 # Backends
 #
 # The backends to which the packet-multiplexer will forward the
 # packet-forwarder UDP data.
 #
 # Example:
-# [[MIMO-Packet-Forwarder.backend]]
+[[packet_multiplexer.backend]]
 # # Host
 # #
 # # The host:IP of the backend.
-# host="192.16.1.5:1700"
+host="192.16.1.5:1700"
 #
 # # Uplink only
 #
-# # This backend is for uplink only. It is not able to send data
+# # This backend is for uplink only. It is not able to send downlink data
 # # back to the gateways.
 # uplink_only=false
-#
+# 
 # # Gateway IDs
 # #
 # # The Gateway IDs to forward data for.

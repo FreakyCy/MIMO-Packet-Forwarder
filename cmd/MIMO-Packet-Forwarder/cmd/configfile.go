@@ -23,8 +23,15 @@ log_level={{ .General.LogLevel }}
 # The interface:port on which the packet-multiplexer will bind for receiving
 # data from the packet-forwarder (UDP data).
 bind="{{ .PacketMultiplexer.Bind }}"
-
-
+#
+# Number of concentrator modules on gateway side. The MIMO-Packet-Multiplexer 
+#will wait for this number of rxpk messages to send to backend, otherwise it will 
+#take about 100ms to process the received message
+concentrators=3
+#
+# This is the main gateway ID used for the communication with the backend software
+maingatewayid="0101010101010101"
+#
 # Backends
 #
 # The backends to which the packet-multiplexer will forward the
@@ -35,11 +42,11 @@ bind="{{ .PacketMultiplexer.Bind }}"
 # # Host
 # #
 # # The host:IP of the backend.
-# host="192.16.1.5:1700"
+host="192.16.1.5:1700"
 #
 # # Uplink only
 #
-# # This backend is for uplink only. It is not able to send data
+# # This backend is for uplink only. It is not able to send downlink data
 # # back to the gateways.
 # uplink_only=false
 # 

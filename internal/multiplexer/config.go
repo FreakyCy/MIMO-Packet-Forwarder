@@ -5,6 +5,7 @@ type Config struct {
 	Bind            string          `mapstructure:"bind"`
 	Backends        []BackendConfig `mapstructure:"backend"`
 	PacketThreshold int             `mapstructure:"concentrators"`
+	MainGatewayID   string          `mapstructure:"maingatewayid"`
 }
 
 // BackendConfig holds the config for a single backend.
