@@ -14,12 +14,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Zählvariable für empfangene UDP Pakete
-var receivedPacketCount int = 0
-var packetThreshold int  // Schwellenwert für die Anzahl der UDP-Pakete
-var maingatewayid string //Set main gateway id
+var receivedPacketCount int = 0 // Variable to count incomming packets
+var packetThreshold int         // Threshold variable for incomming packets
+var maingatewayid string        //Set main gateway id
 
-// udpPacket structure with RSSI and DataValue attributes
+// udpPacket structure with added RSSI, DataValue, id and gatewayID attributes
 type udpPacket struct {
 	data      []byte
 	addr      *net.UDPAddr

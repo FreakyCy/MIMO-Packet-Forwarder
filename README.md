@@ -1,10 +1,8 @@
 # MIMO-Packet-Forwarder
 
-The MIMO-Packet-Forwarder utility forwards the [Semtech packet-forwarder](https://github.com/lora-net/packet_forwarder)
+The MIMO-Packet-Forwarder forwards the [Semtech packet-forwarder](https://github.com/lora-net/packet_forwarder)
 UDP data from different concentrators to one or more endpoints. It has build in MIMO capabilities and a smart antenna selection for downlink packets
-It makes it possible to connect different Semtech packet-forwarders to one backend acting as one LoRa MIMO gateway and can send its data to multiple networks.
-
-## Install
+it makes it possible to connect different Semtech packet-forwarders to one backend acting as one MIMO-LoRaWAN gateway and can send its data to multiple networks.
 
 ## Building from source
 
@@ -86,10 +84,10 @@ host="192.16.1.5:1700"
 # # Gateway IDs
 # #
 # # The Gateway IDs to forward data for.
-# gateway_ids = [
-#   "0101010101010101",
-#   "0202020202020202",
-# ]
+ gateway_ids = [
+   "0101010101010101",
+   "0202020202020202",
+ ]
 ```
 
 ## Example docker compose setup
