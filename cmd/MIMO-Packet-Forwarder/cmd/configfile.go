@@ -53,10 +53,10 @@ host="192.16.1.5:1700"
 # # Gateway IDs
 # #
 # # The Gateway IDs to forward data for.
-# gateway_ids = [
-#   "0101010101010101",
-#   "0202020202020202",
-# ]
+ gateway_ids = [
+   "0101010101010101",
+   "0202020202020202",
+ ]
 {{ range $index, $element := .PacketMultiplexer.Backends }}
 [[packet_multiplexer.backend]]
 host="{{ $element.Host }}"
