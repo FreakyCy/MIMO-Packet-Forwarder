@@ -121,22 +121,3 @@ services:
 
 To run...
 `docker-compose up`
-
-## Changelog
-
-### v3.1.0
-
-This release renames LoRa Packet Multiplexer to ChirpStack Packet Multiplexer.
-See the [Rename Announcement](https://www.chirpstack.io/r/rename-announcement) for more information.
-
-### v3.0.2
-
-* Fix setting of configuration variable (used to resolve if backend allows downlink).
-
-### v3.0.1
-
-* Auto-lowercase configured gateway IDs.
-
-### v3.0.0
-
-* Initial release (part of LoRa Server v3 repository).
